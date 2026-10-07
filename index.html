@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YARA Convertor — YARA-X Compatibility Checker</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">YARA&nbsp;Convertor <span class="app-version" id="app-version"></span></span>
+        <span class="brand-sub">YARA → YARA-X compatibility checker</span>
+      </div>
+      <div class="engine" id="engine-badge">YARA-X …</div>
+    </header>
+
+    <main class="layout">
+      <!-- Left: input -->
+      <section class="panel input-panel">
+        <div class="panel-head">
+          <h2>Your rules</h2>
+          <div class="panel-actions">
+            <button id="load-folder" class="ghost" type="button">Scan folder…</button>
+            <button id="load-files" class="ghost" type="button">Add .yar files…</button>
+            <button id="clear" class="ghost" type="button">Clear</button>
+          </div>
+        </div>
+
+        <textarea
+          id="rules"
+          spellcheck="false"
+          placeholder="Paste your YARA rules here, or add .yar files…"
+        ></textarea>
+
+        <div class="file-list" id="file-list" hidden></div>
+
+        <div class="options">
+          <label class="opt" title="Matches `yr compile --relaxed-re-syntax`. Confirm this matches the v29.3 sensor.">
+            <input type="checkbox" id="opt-relaxed" checked />
+            <span>Relaxed regex syntax</span>
+          </label>
+          <label class="opt" title="Treat slow-pattern warnings as hard errors.">
+            <input type="checkbox" id="opt-slow" />
+            <span>Error on slow patterns</span>
+          </label>
+        </div>
+
+        <button id="run" class="primary" type="button">Check compatibility</button>
+        <p class="disclaimer">
+          Verdict reflects the YARA-X version this app is linked against. Confirm
+          the version &amp; flags match the target sensor before relying on it.
+        </p>
+      </section>
+
+      <!-- Right: results -->
+      <section class="panel result-panel">
+        <div id="verdict" class="verdict empty">
+          <div class="verdict-icon">▷</div>
+          <div class="verdict-text">
+            <strong>No results yet</strong>
+            <span>Paste rules and click “Check compatibility”.</span>
+          </div>
+        </div>
+
+        <div class="summary" id="summary" hidden>
+          <div class="stat stat-err"><span id="stat-errors">0</span><label>errors</label></div>
+          <div class="stat stat-warn"><span id="stat-warnings">0</span><label>warnings</label></div>
+          <div class="stat stat-risk" id="stat-risk-wrap" hidden><span id="stat-risk">0</span><label>relaxed-dependent</label></div>
+          <div class="stat stat-drift" id="stat-drift-wrap" hidden><span id="stat-drift">0</span><label>drift risk</label></div>
+        </div>
+
+        <div class="findings" id="findings"></div>
+
+        <div class="scan-box" id="scan-box">
+          <div class="scan-head">
+            <div class="scan-head-text">
+              <strong>Test a sample file</strong>
+              <span>Run the compiled rules against a real file to confirm they still match on YARA-X — validation of the engine, not just the syntax.</span>
+            </div>
+            <button id="scan-file" class="ghost" type="button">Scan a file…</button>
+          </div>
+          <div class="scan-results" id="scan-results"></div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

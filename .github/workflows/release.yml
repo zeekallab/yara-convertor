@@ -1,0 +1,72 @@
+name: Release
+
+# Builds installers for macOS, Windows and Linux and publishes them to a GitHub
+# Release. Trigger by pushing a version tag (e.g. `git tag v0.1.0 && git push
+# --tags`) or by running this workflow manually from the Actions tab.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple Silicon + Intel in one universal .dmg / .app
+          - platform: macos-latest
+            args: "--target universal-apple-darwin"
+          # Windows .msi (WiX) + .exe (NSIS) installers
+          - platform: windows-latest
+            args: ""
+          # Linux .AppImage + .deb
+          - platform: ubuntu-22.04
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tauri's Linux build needs WebKitGTK and related system libraries.
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # Both macOS arches for the universal build; harmless elsewhere.
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Creates (or reuses) a release for this tag and uploads the
+          # installers as assets.
+          tagName: ${{ github.ref_name }}
+          releaseName: "YARA Convertor ${{ github.ref_name }}"
+          releaseBody: "Desktop app to check YARA rule compatibility with YARA-X. Download the installer for your OS below.\n\nmacOS: `.dmg` · Windows: `.msi` or `-setup.exe` · Linux: `.AppImage`, `.deb` or `.rpm`. The macOS and Windows builds are unsigned test builds — see the README for how to bypass Gatekeeper / SmartScreen."
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
