@@ -1,0 +1,89 @@
+name: Release
+
+# Builds installers for macOS, Windows and Linux and publishes them to a GitHub
+# Release. Trigger by pushing a version tag (e.g. `git tag v0.1.0 && git push
+# --tags`) or by running this workflow manually from the Actions tab.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple Silicon + Intel in one universal .dmg / .app
+          - platform: macos-latest
+            args: "--target universal-apple-darwin"
+          # Windows .msi (WiX) + .exe (NSIS) installers
+          - platform: windows-latest
+            args: ""
+          # Linux .AppImage + .deb
+          - platform: ubuntu-22.04
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tauri's Linux build needs WebKitGTK and related system libraries.
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # Both macOS arches for the universal build; harmless elsewhere.
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install frontend deps
+        run: npm ci
+
+      # macOS code-signing + notarization credentials via tauri-action's
+      # built-in support. Windows/Linux stay unsigned (no certs for those
+      # yet) - the env vars below are simply unset there via the ternary.
+      - name: Write Apple API key (macOS only)
+        if: matrix.platform == 'macos-latest'
+        # Must be an absolute path: by the time notarytool runs, the cargo/
+        # tauri build has changed the working directory to src-tauri/, so a
+        # relative "apple_api_key.p8" no longer resolves to this file.
+        run: echo "${{ secrets.APPLE_API_KEY_P8_BASE64 }}" | base64 --decode > "${{ github.workspace }}/apple_api_key.p8"
+
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ matrix.platform == 'macos-latest' && secrets.MAC_CERT_P12_BASE64 || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ matrix.platform == 'macos-latest' && secrets.MAC_CERT_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: "${{ matrix.platform == 'macos-latest' && 'Developer ID Application: Ziad Kallab (C74AGA6STV)' || '' }}"
+          APPLE_TEAM_ID: ${{ matrix.platform == 'macos-latest' && 'C74AGA6STV' || '' }}
+          APPLE_API_ISSUER: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_API_ISSUER || '' }}
+          APPLE_API_KEY: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_KEY_PATH: ${{ matrix.platform == 'macos-latest' && format('{0}/apple_api_key.p8', github.workspace) || '' }}
+        with:
+          # Creates (or reuses) a release for this tag and uploads the
+          # installers as assets.
+          tagName: ${{ github.ref_name }}
+          releaseName: "YARA Convertor ${{ github.ref_name }}"
+          releaseBody: "Desktop app to check YARA rule compatibility with YARA-X. Download the installer for your OS below.\n\nmacOS: `.dmg` (signed + notarized) · Windows: `.msi` or `-setup.exe` (unsigned - SmartScreen will warn) · Linux: `.AppImage`, `.deb` or `.rpm`."
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
